@@ -10,6 +10,8 @@
 #include <string.h>
 #include <sysparam.h>
 
+#include "button.h"
+
 #include <homekit/homekit.h>
 #include <homekit/characteristics.h>
 #include "wifi_config.h"
@@ -22,19 +24,24 @@
 #define MQTT_USER "InsertYoutMqttUserHere" // TODO change to your username
 #define MQTT_PASS "InsertYoutMqttPassHere" // TODO change to your password
 
-#define MQTT_CMND_TOPIC "leo/lights/command/livingroom/led_test" // TODO configure to your mqtt topic
-#define MQTT_STAT_TOPIC "leo/lights/status/livingroom/led_test" // TODO configure to your mqtt topic
+#define MQTT_CMND_TOPIC "leo/outlets/command/kitchen/kettle" // TODO configure to your mqtt topic
+#define MQTT_STAT_TOPIC "leo/outlets/status/kitchen/kettle" // TODO configure to your mqtt topic
 
 QueueHandle_t publish_queue;
 #define MQTT_MSG_LEN 16
 
-const int gpio = 2;
+const int led_gpio = 13;
+const int relay_gpio = 12;
+const int button_gpio = 0;
+
 bool device_status = false;
 
 void user_init();
 void on_wifi_ready();
 static char *get_accessory_name();
-void led_write(bool value);
+void device_write(bool value);
+
+void button_callback(uint8_t gpio, button_event_t event);
 
 homekit_value_t device_status_get();
 void device_status_set(homekit_value_t value);
@@ -43,23 +50,24 @@ void send_device_status_to_mqtt();
 static void mqtt_on_message_received(mqtt_message_data_t *md);
 static void mqtt_task(void *pvParameters);
 
-homekit_characteristic_t led_characteristic = HOMEKIT_CHARACTERISTIC_(ON, false, .getter=device_status_get, .setter=device_status_set);
+homekit_characteristic_t outlet_characteristic = HOMEKIT_CHARACTERISTIC_(ON, false, .getter=device_status_get, .setter=device_status_set);
 homekit_characteristic_t accessory_serial_number = HOMEKIT_CHARACTERISTIC_(SERIAL_NUMBER, NULL);
 
 homekit_accessory_t *accessories[] = {
-    HOMEKIT_ACCESSORY(.id=1, .category=homekit_accessory_category_lightbulb, .services=(homekit_service_t*[]){
+    HOMEKIT_ACCESSORY(.id=1, .category=homekit_accessory_category_outlet, .services=(homekit_service_t*[]){
         HOMEKIT_SERVICE(ACCESSORY_INFORMATION, .characteristics=(homekit_characteristic_t*[]){
-            HOMEKIT_CHARACTERISTIC(NAME, "ESP Led"),
+            HOMEKIT_CHARACTERISTIC(NAME, "Sonoff Outlet"),
             HOMEKIT_CHARACTERISTIC(MANUFACTURER, "Leo's lab"),
-            HOMEKIT_CHARACTERISTIC(MODEL, "blinky"),
+            HOMEKIT_CHARACTERISTIC(MODEL, "s20"),
             HOMEKIT_CHARACTERISTIC(FIRMWARE_REVISION, "0.42"),
             HOMEKIT_CHARACTERISTIC(IDENTIFY, NULL),
             &accessory_serial_number,
             NULL
         }),
-        HOMEKIT_SERVICE(LIGHTBULB, .primary=true, .characteristics=(homekit_characteristic_t*[]){
-            HOMEKIT_CHARACTERISTIC(NAME, "Sample Device"),
-            &led_characteristic,
+        HOMEKIT_SERVICE(OUTLET, .primary=true, .characteristics=(homekit_characteristic_t*[]){
+            HOMEKIT_CHARACTERISTIC(NAME, "Kettle"),
+            HOMEKIT_CHARACTERISTIC(OUTLET_IN_USE, true),
+            &outlet_characteristic,
             NULL
         }),
         NULL
@@ -72,13 +80,14 @@ homekit_server_config_t config = {
     .password = "111-42-111"
 };
 
-void led_write(bool value) {
+void device_write(bool value) {
     device_status = value;
-    gpio_write(gpio, value ? 0 : 1); // the default led on esps are inverted
+    gpio_write(led_gpio, value ? 1 : 0);
+    gpio_write(relay_gpio, value ? 1 : 0);
 
     send_device_status_to_mqtt();
     
-    homekit_characteristic_notify(&led_characteristic, HOMEKIT_BOOL(value));
+    homekit_characteristic_notify(&outlet_characteristic, HOMEKIT_BOOL(value));
     sysparam_set_bool("device_status", device_status); // save device_status to flash
 }
 
@@ -92,7 +101,7 @@ void device_status_set(homekit_value_t value) {
         return;
     }
 
-    led_write(value.bool_value);
+    device_write(value.bool_value);
 }
 
 void send_device_status_to_mqtt() {
@@ -124,7 +133,12 @@ static void mqtt_on_message_received(mqtt_message_data_t *md) {
         return;
     }
 
-    led_write(value);
+    device_write(value);
+}
+
+void button_callback(uint8_t gpio, button_event_t event) {
+    printf("Toggling outlet\n");
+    device_write(!device_status);
 }
 
 static char *get_accessory_name() {
@@ -149,12 +163,17 @@ void user_init() {
     publish_queue = xQueueCreate(3, MQTT_MSG_LEN);
     wifi_config_init("ESP", NULL, on_wifi_ready); 
 
-    gpio_enable(gpio, GPIO_OUTPUT);
+    gpio_enable(led_gpio, GPIO_OUTPUT);
+    gpio_enable(relay_gpio, GPIO_OUTPUT);
     
     sysparam_get_bool("device_status", &device_status); // read device_status from flash
     
-    led_write(device_status);
+    device_write(device_status);
     accessory_serial_number.value = HOMEKIT_STRING(get_accessory_name());
+
+    if (button_create(button_gpio, 0, 10000, button_callback)) {
+        printf("Failed to initialize button\n");
+    }
 }
 
 static void mqtt_task(void *pvParameters) {
