@@ -1,5 +1,11 @@
-# esp-homekit-mqtt-demo
-Demo of [Apple HomeKit accessory server library](https://github.com/maximkulkin/esp-homekit) with support to mqtt and persistence of state through power cycles.
+# esp-homekit-devices
+Demo of [Apple HomeKit accessory server library](https://github.com/maximkulkin/esp-homekit) 
+
+with additional support for:
+- mqtt
+- persistence of state through power cycles
+
+### more examples and credit to [maximkulkin](https://github.com/maximkulkin/esp-homekit-demo)
 
 ## Usage
 
