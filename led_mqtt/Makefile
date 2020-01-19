@@ -4,10 +4,10 @@ EXTRA_COMPONENTS = \
 	extras/http-parser \
 	extras/dhcpserver \
 	extras/paho_mqtt_c \
-	$(abspath ../../components/esp8266-open-rtos/wifi_config) \
-	$(abspath ../../components/esp8266-open-rtos/cJSON) \
-	$(abspath ../../components/common/wolfssl) \
-	$(abspath ../../components/common/homekit)
+	$(abspath ../components/esp8266-open-rtos/wifi_config) \
+	$(abspath ../components/esp8266-open-rtos/cJSON) \
+	$(abspath ../components/common/wolfssl) \
+	$(abspath ../components/common/homekit)
 
 FLASH_SIZE ?= 32
 FLASH_MODE ?= dout
